@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Alarm } from "../store/alarmStore";
-import { Audio } from "expo-av";
+import { createAudioPlayer } from "expo-audio";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -14,16 +14,11 @@ Notifications.setNotificationHandler({
 export function setupAlarmListener() {
   Notifications.addNotificationReceivedListener(async () => {
     try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-      });
-      const { sound } = await Audio.Sound.createAsync(
-        require("../../assets/sounds/alarm_default.mp3"),
-        { shouldPlay: true, volume: 1.0 }
+      const player = createAudioPlayer(
+        require("../../assets/sounds/alarm_default.mp3")
       );
-      // Libera memória após 60 segundos
-      setTimeout(() => sound.unloadAsync(), 60000);
+      player.play();
+      setTimeout(() => player.remove(), 60000);
     } catch (e) {
       console.log("Erro ao tocar alarme:", e);
     }
