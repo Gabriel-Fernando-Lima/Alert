@@ -21,15 +21,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-router",
     "expo-local-authentication",
+    "expo-asset",
     [
-    "expo-notifications",
-    {
-      icon: "./assets/images/icon.png",
-      color: "#6C63FF",
-      sounds: ["./assets/sounds/alarm_default.mp3"], // ← adiciona aqui
-    },
+      "expo-notifications",
+      {
+        icon: "./assets/images/icon.png",
+        color: "#6C63FF",
+        sounds: ["./assets/sounds/alarm_default.mp3"], 
+      },
+    ],
   ],
-],
   extra: {
     eas: {
       projectId: "alert-app-3c556",
