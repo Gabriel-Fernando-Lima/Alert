@@ -4,7 +4,8 @@ import {
   StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/src/services/firebase";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/src/services/firebase";
 import { router } from "expo-router";
 import * as LocalAuthentication from "expo-local-authentication";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,14 +18,74 @@ export default function LoginScreen() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
 
   useEffect(() => {
-    checkBiometric();
+    const t = setTimeout(() => checkBiometric(), 500);
+    return () => clearTimeout(t);
   }, []);
 
   async function checkBiometric() {
+    try {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      console.log("Biometric hardware:", compatible, "enrolled:", enrolled);
+
+      if (!compatible || !enrolled) {
+        setBiometricAvailable(false);
+        return;
+      }
+
+      const savedUid = await AsyncStorage.getItem("@alert:last_uid");
+      const savedEmail = await AsyncStorage.getItem("@alert:last_email");
+      console.log("Saved uid:", savedUid, "email:", savedEmail);
+
+      if (!savedUid && !savedEmail) {
+        setBiometricAvailable(false);
+        return;
+      }
+
+      if (savedUid) {
+        const docRef = doc(db, "users", savedUid);
+        const snap = await getDoc(docRef);
+        console.log("Firestore snap exists:", snap.exists(), "data:", snap.data());
+        setBiometricAvailable(snap.exists() && snap.data()?.biometricEnabled === true);
+      } else {
+        setBiometricAvailable(true);
+      }
+    } catch (e) {
+      console.log("checkBiometric erro:", e);
+      setBiometricAvailable(false);
+    }
+  }
+
+  async function askToEnableBiometric(uid: string) {
     const compatible = await LocalAuthentication.hasHardwareAsync();
     const enrolled = await LocalAuthentication.isEnrolledAsync();
-    const savedEmail = await AsyncStorage.getItem("@alert:last_email");
-    setBiometricAvailable(compatible && enrolled && !!savedEmail);
+    if (!compatible || !enrolled) return;
+
+    const docRef = doc(db, "users", uid);
+    const snap = await getDoc(docRef);
+    if (snap.exists() && snap.data()?.biometricEnabled === true) return;
+
+    Alert.alert(
+      "Habilitar biometria",
+      "Deseja usar sua digital para entrar nas próximas vezes?",
+      [
+        { text: "Agora não", style: "cancel" },
+        {
+          text: "Habilitar",
+          onPress: async () => {
+            const result = await LocalAuthentication.authenticateAsync({
+              promptMessage: "Confirme sua digital para cadastrar",
+              cancelLabel: "Cancelar",
+            });
+            if (result.success) {
+              await setDoc(docRef, { biometricEnabled: true }, { merge: true });
+              await AsyncStorage.setItem("@alert:last_uid", uid);
+              Alert.alert("Biometria cadastrada!", "Você pode entrar com a digital nas próximas vezes.");
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function handleLogin() {
@@ -34,10 +95,16 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const uid = cred.user.uid;
+
       await AsyncStorage.setItem("@alert:last_email", email);
       await AsyncStorage.setItem("@alert:last_password", password);
+      await AsyncStorage.setItem("@alert:last_uid", uid);
+
       router.replace("/(tabs)/alarms" as any);
+
+      setTimeout(() => askToEnableBiometric(uid), 800);
     } catch (error: any) {
       const msg =
         error.code === "auth/invalid-credential"
@@ -63,12 +130,13 @@ export default function LoginScreen() {
       const savedPassword = await AsyncStorage.getItem("@alert:last_password");
 
       if (!savedEmail || !savedPassword) {
-        Alert.alert("Atenção", "Faça login com e-mail e senha primeiro para habilitar a biometria.");
+        Alert.alert("Atenção", "Faça login com e-mail e senha primeiro.");
         return;
       }
 
       setLoading(true);
-      await signInWithEmailAndPassword(auth, savedEmail, savedPassword);
+      const cred = await signInWithEmailAndPassword(auth, savedEmail, savedPassword);
+      await AsyncStorage.setItem("@alert:last_uid", cred.user.uid);
       router.replace("/(tabs)/alarms" as any);
     } catch (error) {
       Alert.alert("Erro", "Não foi possível autenticar com biometria.");

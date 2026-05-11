@@ -6,6 +6,10 @@ import {
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/src/services/firebase";
 import { router } from "expo-router";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/src/services/firebase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as LocalAuthentication from "expo-local-authentication";
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState("");
@@ -28,8 +32,41 @@ export default function RegisterScreen() {
     }
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = cred.user.uid;
+
+      await AsyncStorage.setItem("@alert:last_email", email);
+      await AsyncStorage.setItem("@alert:last_password", password);
+      await AsyncStorage.setItem("@alert:last_uid", uid);
+
       router.replace("/(tabs)/alarms" as any);
+
+      setTimeout(async () => {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        if (!compatible || !enrolled) return;
+
+        Alert.alert(
+          "Habilitar biometria",
+          "Deseja usar sua digital para entrar nas próximas vezes?",
+          [
+            { text: "Agora não", style: "cancel" },
+            {
+              text: "Habilitar",
+              onPress: async () => {
+                const result = await LocalAuthentication.authenticateAsync({
+                  promptMessage: "Confirme sua digital para cadastrar",
+                  cancelLabel: "Cancelar",
+                });
+                if (result.success) {
+                  await setDoc(doc(db, "users", uid), { biometricEnabled: true }, { merge: true });
+                  Alert.alert("Biometria cadastrada!", "Você pode entrar com a digital nas próximas vezes.");
+                }
+              },
+            },
+          ]
+        );
+      }, 800);
     } catch (error: any) {
       const msg =
         error.code === "auth/email-already-in-use"

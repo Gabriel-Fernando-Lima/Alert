@@ -6,10 +6,12 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useAlarmStore } from "@/src/store/alarmStore";
 import { scheduleAlarm, requestNotificationPermission } from "@/src/services/notifications";
 import { useAlarmAudio } from "@/src/services/audio";
 import { auth } from "@/src/services/firebase";
+import { useAlarmStore } from "@/src/store/alarmStore";
+import { useAlarmRinging } from "@/src/services/audio";
+import { useSettingsStore } from "@/src/store/settingsStore";
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const SOUNDS = ["default", "beep", "digital", "nature"];
@@ -26,6 +28,12 @@ export default function CreateAlarmScreen() {
   const [label, setLabel] = useState("");
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [selectedSound, setSelectedSound] = useState("default");
+
+  const { setRinging } = useAlarmStore();
+  const { gradualVolume } = useSettingsStore();
+  const { startRinging, stopRinging } = useAlarmRinging();
+  const [testingAlarm, setTestingAlarm] = useState(false);
+
 
   useEffect(() => {
     if (isEditing) {
@@ -45,6 +53,30 @@ export default function CreateAlarmScreen() {
     setSelectedDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
     );
+  }
+
+  async function handleTestAlarm() {
+    if (testingAlarm) {
+      stopRinging();
+      setRinging(null);
+      setTestingAlarm(false);
+      return;
+    }
+
+    const testAlarm = {
+      id: "test",
+      uid: "",
+      label: label || "Teste de alarme",
+      hour: time.getHours(),
+      minute: time.getMinutes(),
+      days: selectedDays,
+      sound: selectedSound,
+      active: true,
+      created_at: Date.now(),
+    };
+
+    setTestingAlarm(true);
+    setRinging(testAlarm);
   }
 
   async function handleSave() {
@@ -149,6 +181,21 @@ export default function CreateAlarmScreen() {
         ))}
       </View>
 
+      <TouchableOpacity
+        style={[styles.previewBtn, testingAlarm && { borderColor: "#ff4444" }]}
+        onPress={handleTestAlarm}
+        accessibilityLabel="Testar alarme completo"
+      >
+        <Ionicons
+          name={testingAlarm ? "stop-circle-outline" : "alarm-outline"}
+          size={20}
+          color={testingAlarm ? "#ff4444" : "#6C63FF"}
+        />
+        <Text style={[styles.previewText, testingAlarm && { color: "#ff4444" }]}>
+          {testingAlarm ? "Parar teste" : "Testar alarme completo"}
+        </Text>
+      </TouchableOpacity>
+      
       <TouchableOpacity style={styles.previewBtn} onPress={playPreview}>
         <Ionicons name="play-circle-outline" size={20} color="#6C63FF" />
         <Text style={styles.previewText}>Testar som</Text>

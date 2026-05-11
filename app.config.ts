@@ -16,18 +16,32 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "VIBRATE",
       "USE_BIOMETRIC",
       "USE_FINGERPRINT",
+      "FOREGROUND_SERVICE",
+      "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+      "FOREGROUND_SERVICE_DATA_SYNC",
+      "WAKE_LOCK",
+      "USE_FULL_SCREEN_INTENT",
+      "CAMERA",
+      "FLASHLIGHT",
     ],
   },
   plugins: [
     "expo-router",
     "expo-local-authentication",
     "expo-asset",
+    "expo-web-browser",
     [
       "expo-notifications",
       {
         icon: "./assets/images/icon.png",
         color: "#6C63FF",
-        sounds: ["./assets/sounds/alarm_default.mp3"], 
+        sounds: ["./assets/sounds/alarm_default.mp3"],
+      },
+    ],
+    [
+      "expo-background-fetch",
+      {
+        startOnBoot: true,
       },
     ],
   ],

@@ -1,28 +1,61 @@
 import * as Notifications from "expo-notifications";
+import * as TaskManager from "expo-task-manager";
 import { Alarm } from "../store/alarmStore";
-import { createAudioPlayer } from "expo-audio";
+import { useAlarmStore } from "../store/alarmStore";
+
+const BACKGROUND_NOTIFICATION_TASK = "BACKGROUND_NOTIFICATION_TASK";
+
+// Registra a task ANTES do app montar — precisa ficar fora de qualquer componente
+TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, ({ data, error }: any) => {
+  if (error) {
+    console.error("Background task error:", error);
+    return;
+  }
+  if (data?.notification) {
+    const alarm = data.notification.request.content.data?.alarm;
+    if (alarm) {
+      useAlarmStore.getState().setRinging(alarm);
+    }
+  }
+});
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
+export async function registerBackgroundTask() {
+  try {
+    await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+  } catch (e) {
+    console.log("Background task já registrada ou erro:", e);
+  }
+}
+
 export function setupAlarmListener() {
-  Notifications.addNotificationReceivedListener(async () => {
-    try {
-      const player = createAudioPlayer(
-        require("../../assets/sounds/alarm_default.mp3")
-      );
-      player.play();
-      setTimeout(() => player.remove(), 60000);
-    } catch (e) {
-      console.log("Erro ao tocar alarme:", e);
+  const subReceived = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification.request.content.data as any;
+    if (data?.alarm) {
+      useAlarmStore.getState().setRinging(data.alarm);
     }
   });
+
+  const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response.notification.request.content.data as any;
+    if (data?.alarm) {
+      useAlarmStore.getState().setRinging(data.alarm);
+    }
+  });
+
+  return () => {
+    subReceived.remove();
+    subResponse.remove();
+  };
 }
 
 export async function requestNotificationPermission() {
@@ -34,31 +67,27 @@ export async function scheduleAlarm(alarm: Alarm) {
   await cancelAlarm(alarm.id);
   if (!alarm.active) return;
 
-  if (alarm.days.length === 0) {
-    const next = nextOccurrence(alarm.hour, alarm.minute);
-    console.log("Agendando para:", next.toLocaleString());
+  const content = {
+    title: "⏰ ALERT",
+    body: alarm.label || "Hora de acordar!",
+    sound: "alarm_default.mp3",
+    data: { alarm },
+  };
 
+  if (alarm.days.length === 0) {
     await Notifications.scheduleNotificationAsync({
       identifier: alarm.id,
-      content: {
-        title: "⏰ ALERT",
-        body: alarm.label || "Hora de acordar!",
-        sound: "alarm_default.mp3",
-      },
+      content,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: next,
+        date: nextOccurrence(alarm.hour, alarm.minute),
       },
     });
   } else {
     for (const day of alarm.days) {
       await Notifications.scheduleNotificationAsync({
         identifier: `${alarm.id}_${day}`,
-        content: {
-          title: "⏰ ALERT",
-          body: alarm.label || "Hora de acordar!",
-          sound: "alarm_default.mp3",
-        },
+        content,
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
           weekday: day + 1,
@@ -68,6 +97,23 @@ export async function scheduleAlarm(alarm: Alarm) {
       });
     }
   }
+}
+
+export async function scheduleSnooze(alarm: Alarm, minutes = 5) {
+  const snoozeDate = new Date(Date.now() + minutes * 60 * 1000);
+  await Notifications.scheduleNotificationAsync({
+    identifier: `${alarm.id}_snooze`,
+    content: {
+      title: "⏰ ALERT — Soneca",
+      body: alarm.label || "Hora de acordar!",
+      sound: "alarm_default.mp3",
+      data: { alarm },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: snoozeDate,
+    },
+  });
 }
 
 export async function cancelAlarm(id: string) {

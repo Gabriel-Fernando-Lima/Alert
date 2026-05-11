@@ -15,15 +15,18 @@ export type Alarm = {
 
 type AlarmStore = {
   alarms: Alarm[];
+  ringingAlarm: Alarm | null;
   load: (uid: string) => void;
   add: (alarm: Alarm) => void;
   update: (alarm: Alarm) => void;
   remove: (id: string, uid: string) => void;
   toggle: (id: string, active: boolean, uid: string) => void;
+  setRinging: (alarm: Alarm | null) => void;
 };
 
 export const useAlarmStore = create<AlarmStore>((set) => ({
   alarms: [],
+  ringingAlarm: null,
 
   load: (uid) => {
     const alarms = alarmRepository.getAll(uid);
@@ -49,4 +52,6 @@ export const useAlarmStore = create<AlarmStore>((set) => ({
     alarmRepository.toggleActive(id, active, uid);
     set((s) => ({ alarms: s.alarms.map((a) => (a.id === id ? { ...a, active } : a)) }));
   },
+
+  setRinging: (alarm) => set({ ringingAlarm: alarm }),
 }));
